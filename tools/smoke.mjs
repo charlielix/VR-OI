@@ -2809,6 +2809,44 @@ check('校园里打不到监考老师（区域隔离）', () => {
   if (!r) throw new Error('校园里竟然能对老师出拳');
   return '校园内 actionSpace = null';
 });
+check('走廊里能打保安（保安会追出门）', () => {
+  /* 之前 updateInteract 对 hall1/hall2 直接 hallInteract() + return，
+     保安出拳判定只覆盖房间 —— 结果保安追到走廊里，左键完全没反应。
+     这条把"走廊里保安在拳锋内 → actionSpace 必须给出拳"钉住。 */
+  const r = vm.runInContext(`
+    (() => {
+      const saved = { area: state.area, px: state.pos.x, pz: state.pos.z, yaw: state.yaw };
+      const savedG = securityGuards.slice(), savedS = state.guardsSpawned;
+      let out = null, tempGuard = null;
+      try {
+        securityGuards.length = 0;
+        state.guardsSpawned = 0;
+        switchArea('hall1');
+        state.pos.set(10.5, 1.65, 0);
+        state.yaw = 0; yawTarget = 0;          /* 面朝 -Z */
+        tempGuard = buildSecurityGuard(10.5, -1.2);
+        tempGuard.userData = { speed: 1, alive: true, blink: 0 };
+        securityGuards.push(tempGuard);
+        updateInteract();
+        out = { area: state.area, hasSpace: !!actionSpace,
+                prompt: String(promptEl.textContent || '').slice(0, 14) };
+      } finally {
+        if (tempGuard) scene.remove(tempGuard.group);
+        securityGuards.length = 0;
+        savedG.forEach(g => securityGuards.push(g));
+        state.guardsSpawned = savedS;
+        switchArea(saved.area);
+        state.pos.x = saved.px; state.pos.z = saved.pz;
+        state.yaw = saved.yaw; yawTarget = saved.yaw;
+      }
+      return out;
+    })()
+  `, sandbox);
+  if (r.area !== 'hall1') throw new Error('没切到走廊：' + r.area);
+  if (!r.hasSpace) throw new Error('走廊里保安在拳锋内，actionSpace 却是 null（左键无反应）');
+  if (!/出拳|抡/.test(r.prompt)) throw new Error('提示不对：' + r.prompt);
+  return 'hall1 · actionSpace = 出拳 · ' + r.prompt;
+});
 check('交互提示会刷新', () => {
   vm.runInContext('updateInteract()', sandbox);
   return 'prompt = ' + vm.runInContext('promptEl.textContent', sandbox).slice(0, 20);

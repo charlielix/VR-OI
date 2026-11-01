@@ -58,13 +58,9 @@ function updateInteract(){
     return;
   }
 
-  /* ---- 楼内走廊（hall1/hall2）：干扰外班同学 / 洗手间 / 楼梯 ---- */
-  if (state.area === 'hall1' || state.area === 'hall2'){
-    hallInteract();
-    return;
-  }
-
-  /* ---- 1. 保安 ---- */
+  /* ---- 1. 保安（房间 / 走廊都算）----
+     保安会追出教室（main.js 的 updateGuards 在房间和走廊都跑），
+     所以出了门也必须能打 —— 否则走廊里左键就完全没反应。 */
   for (let i = 0; i < securityGuards.length; i++){
     const g = securityGuards[i];
     if (!g.userData.alive) continue;
@@ -80,11 +76,12 @@ function updateInteract(){
     }
   }
 
-  /* ---- 2. 监考老师 ----
-     加 state.area 判断是必需的：老师和玩家座位都在房间坐标系里，
-     但从校园那边看，它们是"近在咫尺"的（校园整体平移到 +Z 500，
-     而房间在原点）。少了这一条，你在校门口就能隔空出拳打老师。 */
-  if (state.area === 'room'
+  /* ---- 2. 监考老师（房间 / 走廊追出来时都算）----
+     必须限制在 room / hall：老师和玩家座位都在房间坐标系里，
+     从校园那边看它们是"近在咫尺"的（校园整体平移到 +Z 500），
+     少了这一条，你在校门口就能隔空出拳打老师。
+     老师没在追的时候待在房间里，走廊这边的距离判定自然打不到。 */
+  if ((state.area === 'room' || state.area === 'hall1' || state.area === 'hall2')
       && teacher && !teacher.userData.leaving && teacher.userData.mode !== 'warn'){
     const d = Math.hypot(state.pos.x - teacher.group.position.x, state.pos.z - teacher.group.position.z);
     if (d < TEACHER_PUNCH_RANGE && inAttackArc(teacher.group.position.x, teacher.group.position.z)){
@@ -93,6 +90,12 @@ function updateInteract(){
       promptEl.classList.remove('hidden');
       return;
     }
+  }
+
+  /* ---- 走廊：过了保安 / 老师这一关，剩下的交给走廊专用判定 ---- */
+  if (state.area === 'hall1' || state.area === 'hall2'){
+    hallInteract();
+    return;
   }
 
   /* ---- 3. 其他选手 ---- */
