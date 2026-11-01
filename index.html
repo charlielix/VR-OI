@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>VR OI 考场 · 重制版</title>
+<!-- 内联 SVG 图标：省掉一次请求，也避免浏览器自动索取 /favicon.ico 造成 404 噪音
+     （那会在控制台留下一条红字，排查真问题时很碍眼） -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1018'/%3E%3Ctext x='16' y='23' font-size='18' font-family='monospace' text-anchor='middle' fill='%236ea8ff'%3EOI%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/css/main.css">
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+<div id="redFlash"></div>
+<div id="hpBar"><i></i><i></i><i></i></div>
+<div id="tenseVignette"></div>
+<div id="crosshair" class="hidden"></div>
+
+<div id="hud" class="hidden">
+  <div id="hudTimer">04:00:00</div>
+  <div id="hudScore">总分 <b>0</b> / 400</div>
+  <div id="hudProbs"></div>
+  <button id="btnSettings">设置</button>
+  <button id="btnEnd">交卷离场</button>
+</div>
+<div id="minimapWrap" class="hidden">
+  <canvas id="minimap" width="148" height="132"></canvas>
+</div>
+<div id="prompt" class="hidden"></div>
+<div id="toastStack"></div>
+<div id="achNotify"></div>
+
+<!-- ===================== 物品栏（快捷栏） =====================
+     4 格，**滚轮**切格，Q 使用当前格。
+     数字键 1-9 留给弹窗选项（按 2 选第二项），不兼职切格子 ——
+     一个键两种含义必然在"打架时按 2 喝水"和"弹窗里按 2"之间出事。
+     z-index 压在 .screen 之下：打开暂停/背包/代码面板时会自动被面板盖住，
+     不用在每个 openXxx() 里记得把它藏起来。 -->
+<div id="hotbar" class="hidden"></div>
+
+<!-- ===================== 背包 ===================== -->
+<div id="bagUI" class="screen hidden">
+  <div class="bagbox">
+    <h2>背 包</h2>
+    <div class="bsub">
+      点物品 → 放进当前选中的快捷栏格子。按 <b>1</b>-<b>4</b> 换格子，<b>Q</b> 使用，<b>B</b> 开合背包。
+    </div>
+    <div class="baglabel">快捷栏</div>
+    <div class="bagslots" id="bagSlots"></div>
+    <div class="baglabel">包里的东西</div>
+    <div class="baggrid" id="bagGrid"></div>
+    <div class="bagdesc" id="bagDesc">把鼠标放在物品上看看是什么。</div>
+    <div class="brow">
+      <button class="btn primary" id="btnCloseBag">合上背包 (B)</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 开始界面 ===================== -->
+<div id="start">
+  <h1>VR OI 考场</h1>
+  <div class="sub">NATIONAL OLYMPIAD IN INFORMATICS · REBUILT ARENA</div>
+  <div class="card">
+    <b>考试须知</b><br>
+    比赛时长 <b>4 小时</b>，共 <b>4 道题</b>，满分 <b>400 分</b>。<br>
+    入场有 <b>30 分钟</b> 预留时间：早到不扣考试时间，迟到按迟到时长扣除。<br><br>
+    <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 &nbsp;/&nbsp;
+    <kbd>Shift</kbd> 疾走 &nbsp;/&nbsp; <kbd>空格</kbd> 跳跃 &nbsp;/&nbsp;
+    <b>鼠标</b> 转视角（指针锁定）<br>
+    <kbd>E</kbd> 或 <kbd>左键</kbd> 交互（电脑 · 草稿纸 · 水杯 · 门）；<br>
+    <kbd>左键</kbd> 出拳：正面对准目标，一拳扫倒拳锋内全部敌人；<br>
+    <kbd>F</kbd> 干扰同学 &nbsp;/&nbsp; <kbd>H</kbd> 举手呼叫监考 &nbsp;/&nbsp;
+    <kbd>Esc</kbd> 释放鼠标 / 设置<br>
+    <kbd>1</kbd>-<kbd>4</kbd> 选物品栏 &nbsp;/&nbsp; <kbd>Q</kbd> 使用 &nbsp;/&nbsp;
+    <kbd>B</kbd> 背包（你带了臭水、矿泉水、辣条 —— 保安只收了手机）<br><br>
+    世界空间弹窗：<b>视线停留 1 秒</b>自动确认，也可解锁鼠标直接点击，或按 <kbd>1</kbd>-<kbd>9</kbd>。<br><br>
+
+    <div class="set-title">视角手感调校</div>
+    <div class="setting-row">
+      <label>鼠标灵敏度</label>
+      <input type="range" id="turnSliderStart" min="1" max="20" value="10">
+      <span class="val" id="turnValueStart">1.9</span>
+    </div>
+    <div class="setting-row">
+      <label>视角平滑</label>
+      <input type="range" id="smoothSliderStart" min="0" max="90" value="35">
+      <span class="val" id="smoothValueStart">35%</span>
+    </div>
+    <div class="setting-row">
+      <label>时间流速</label>
+      <input type="range" id="timeSliderStart" min="1" max="60" value="15">
+      <span class="val" id="timeValueStart">15x</span>
+    </div>
+    <div class="setting-row">
+      <label>音量</label>
+      <input type="range" id="volSliderStart" min="0" max="100" value="60">
+      <span class="val" id="volValueStart">60%</span>
+    </div>
+    <div class="setting-row">
+      <label>镜头晃动</label>
+      <span class="toggle on" id="shakeToggleStart"></span>
+    </div>
+    <div class="setting-row" title="开：战斗紧张时灯光压暗、红光雾、调色、暗角；关：画面保持平时亮度">
+      <label>战斗光影</label>
+      <span class="toggle on" id="combatFxToggleStart"></span>
+    </div>
+    <div class="setting-row" title="保安刷新位置：随机围着你 / 从考场门口涌进来 / 从电梯间一路跑进来">
+      <label>保安刷新位置</label>
+      <select id="guardSpawnSelStart">
+        <option value="random">随机</option>
+        <option value="door">门前</option>
+        <option value="elevator">电梯间</option>
+      </select>
+    </div>
+    <div class="setting-row" title="保安移动速度相对你疾跑速度的比例（默认 90%，略慢于疾跑）">
+      <label>保安速度</label>
+      <input type="range" id="guardSpeedSliderStart" min="30" max="160" value="90">
+      <span class="val" id="guardSpeedValueStart">90%</span>
+    </div>
+  </div>
+  <button id="btnStart">进 入 考 场</button>
+  <button id="btnClearSaveStart" class="mini">清空存档</button>
+  <!-- 版本戳：由 js/boot.js 填。用途是让"浏览器在跑旧缓存"这件事一眼可见，
+       不用开控制台对比文件时间。用 tools/serve.mjs 起服务时会自动变化；
+       用 python -m http.server 这类不发缓存头的服务器则显示"未标记"。 -->
+  <div id="buildTag" class="build-tag">构建 ……</div>
+</div>
+
+<!-- ===================== 暂停菜单 ===================== -->
+<div id="pauseMenu" class="screen hidden">
+  <div class="pbox">
+    <h2>设置</h2>
+    <div class="sub">比赛时间不会因为打开这个面板而暂停。</div>
+    <div class="set-title" style="border-top:none;margin-top:10px;padding-top:0">视角手感</div>
+    <div class="setting-row">
+      <label>鼠标灵敏度</label>
+      <input type="range" id="turnSlider" min="1" max="20" value="10">
+      <span class="val" id="turnValue">1.9</span>
+    </div>
+    <div class="setting-row">
+      <label>视角平滑</label>
+      <input type="range" id="smoothSlider" min="0" max="90" value="35">
+      <span class="val" id="smoothValue">35%</span>
+    </div>
+    <div class="set-title">比赛</div>
+    <div class="setting-row">
+      <label>时间流速</label>
+      <input type="range" id="timeSlider" min="1" max="60" value="15">
+      <span class="val" id="timeValue">15x</span>
+    </div>
+    <div class="setting-row">
+      <label>音量</label>
+      <input type="range" id="volSlider" min="0" max="100" value="60">
+      <span class="val" id="volValue">60%</span>
+    </div>
+    <div class="setting-row">
+      <label>音效</label>
+      <span class="toggle on" id="muteToggle"></span>
+    </div>
+    <div class="setting-row">
+      <label>镜头晃动</label>
+      <span class="toggle on" id="shakeToggle"></span>
+    </div>
+    <div class="setting-row" title="开：战斗紧张时灯光压暗、红光雾、调色、暗角；关：画面保持平时亮度">
+      <label>战斗光影</label>
+      <span class="toggle on" id="combatFxToggle"></span>
+    </div>
+    <div class="setting-row" title="保安刷新位置：随机围着你 / 从考场门口涌进来 / 从电梯间一路跑进来">
+      <label>保安刷新位置</label>
+      <select id="guardSpawnSel">
+        <option value="random">随机</option>
+        <option value="door">门前</option>
+        <option value="elevator">电梯间</option>
+      </select>
+    </div>
+    <div class="setting-row" title="保安移动速度相对你疾跑速度的比例（默认 90%，略慢于疾跑）">
+      <label>保安速度</label>
+      <input type="range" id="guardSpeedSlider" min="30" max="160" value="90">
+      <span class="val" id="guardSpeedValue">90%</span>
+    </div>
+    <div class="set-title">存档</div>
+    <div class="row2">
+      <button class="btn" id="btnSave">手动保存进度</button>
+      <button class="btn" id="btnClearSave">清除存档</button>
+    </div>
+    <div class="row2">
+      <button class="btn primary" id="btnResume">返回考场</button>
+      <button class="btn" id="btnPauseEnd">交卷离场</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 代码界面 ===================== -->
+<div id="codeUI" class="screen hidden">
+  <div class="ide">
+    <div class="ide-top">
+      <div><span class="dot" style="background:#ff5f57"></span>
+           <span class="dot" style="background:#ffbd2e"></span>
+           <span class="dot" style="background:#28c840"></span>
+           &nbsp;&nbsp;NOI 2026 · 评测环境 v3.2</div>
+      <div class="ide-time" id="ideTime">04:00:00</div>
+    </div>
+    <div class="ide-main">
+      <aside class="ide-problems" id="problemList"></aside>
+      <section class="ide-problem" id="problemPane"></section>
+      <section class="ide-editor">
+        <div class="bar">
+          <span id="fileName">T1.cpp</span>
+          <span id="cursorInfo">Ln 1, Col 1 · C++14 · g++ -O2</span>
+        </div>
+        <div class="editor-wrap">
+          <pre id="codeHighlight" aria-hidden="true"></pre>
+          <textarea id="codeArea" spellcheck="false" wrap="off"
+                    autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+        </div>
+      </section>
+    </div>
+    <div class="ide-bottom">
+      <button id="btnSubmit" class="btn primary">提交评测</button>
+      <button id="btnReset" class="btn">重置代码</button>
+      <span class="ide-hint">按 Esc 或点击右侧按钮离开电脑</span>
+      <button id="btnLeave" class="btn">离开电脑</button>
+    </div>
+  </div>
+  <div id="verdict" class="verdict hidden"></div>
+</div>
+
+<!-- ===================== 草稿纸 ===================== -->
+<div id="paperUI" class="screen hidden">
+  <div class="paperbox">
+    <div class="ph">
+      <span>草稿纸 · 鼠标拖动书写</span>
+      <span>
+        <button class="btn small" id="btnClearPaper">清空</button>
+        <button class="btn small" id="btnClosePaper">放下纸 (Esc)</button>
+      </span>
+    </div>
+    <canvas id="paperCanvas"></canvas>
+  </div>
+</div>
+
+<!-- ===================== 手机 ===================== -->
+<!-- 只有没过安检、或者走员工通道溜进来的人才有得看。见 js/phone.js -->
+<div id="phoneUI" class="screen hidden">
+  <div class="phonebox">
+    <div class="pn-bar">
+      <span id="phClock">00:00</span>
+      <span class="pn-carrier">无服务</span>
+      <span id="phLeft">剩余 4:00:00</span>
+    </div>
+    <div class="pn-tabs" id="phTabs">
+      <button data-tab="status">战况</button>
+      <button data-tab="chat">群聊</button>
+      <button data-tab="game">2048</button>
+      <button data-tab="calc">计算器</button>
+    </div>
+
+    <div id="phStatus">
+      <div id="phRows"></div>
+      <div class="pn-sum">
+        <span id="phTotal">0 分</span>
+        <span id="phRank">第 1 / 1 名</span>
+      </div>
+    </div>
+
+    <div id="phChat" class="hidden">
+      <div id="phChatLog"></div>
+    </div>
+
+    <div id="phGame" class="hidden">
+      <div class="pn-ghead">
+        <span>分数 <b id="phGameScore">0</b></span>
+        <span>最高 <b id="phGameBest">0</b></span>
+      </div>
+      <div class="g2048-grid" id="phGameBoard"></div>
+      <div class="pn-gtip" id="phGameTip">方向键 / WASD 移动 · R 重开</div>
+    </div>
+
+    <div id="phCalc" class="hidden">
+      <div class="pn-calc">
+        <div id="phCalcExpr"></div>
+        <div id="phCalcOut">0</div>
+      </div>
+      <div id="phCalcPad"></div>
+    </div>
+
+    <div class="pn-foot">手机没封存 —— 别让监考看见。<b>P / Esc 收起</b></div>
+  </div>
+</div>
+
+<!-- ===================== 走廊 ===================== -->
+<div id="corridorUI" class="screen hidden">
+  <div class="corrbox">
+    <div id="corrVanish">
+      <div id="corrDoor">&#9650;</div>
+      <div id="corrDoorLabel">洗手间</div>
+    </div>
+    <div class="corrinfo">
+      <div id="corrStep">沿着走廊走向洗手间……</div>
+      <div class="corrprogress"><i id="corrBar"></i></div>
+      <div id="corrHint">按住 W 前进</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 洗手间 ===================== -->
+<div id="bathroomUI" class="screen hidden">
+  <div class="bathbox">
+    <h2>洗 手 间</h2>
+    <div class="bsub" id="bathSub">第 1 / 6 步</div>
+    <div class="bstep" id="bathStepText">走向小便池</div>
+    <div class="bprogress"><i id="bathBar"></i></div>
+    <div class="bhint" id="bathHint">按住 W 前进</div>
+    <div class="bdots" id="bathDots"></div>
+  </div>
+</div>
+
+<!-- ===================== NPC 电脑 ===================== -->
+<div id="npcComputerUI" class="screen hidden">
+  <div class="npcbox">
+    <div class="npchead">
+      <span id="npcCompHead">小明的电脑</span>
+      <span class="tag" id="npcCompTag">未经允许</span>
+    </div>
+    <div class="npcbody" id="npcCompCode"></div>
+    <div class="npcactions">
+      <button class="btn" id="btnCloseNPCComp">离开他的电脑 (Esc)</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 电脑桌面 · CSP-S114514 · 小恐龙 =====================
+     考场电脑的桌面。左边是文件列表（四个题目文件 + dino.exe），
+     双击题目文件直接进 IDE，双击 dino.exe 打开右边那个能玩的小恐龙。
+     文件列表由 js/launcher.js 按本局抽到的题目动态生成 —— 桌面上看到的
+     文件名就是你要交的文件名。 -->
+<div id="desktopUI" class="screen hidden">
+  <div class="deskwin">
+    <div class="dw-bar">
+      <span class="dw-dots"><i></i><i></i><i></i></span>
+      <span class="dw-title">CSP-S114514</span>
+      <button class="dw-x" id="btnCloseDesktop" title="关闭">✕</button>
+    </div>
+    <div class="dw-body">
+      <div class="dw-list" id="desktopList"></div>
+      <div class="dw-dino hidden" id="dinoPane">
+        <div class="dn-head">
+          <span class="dn-file">dino.exe</span>
+          <span class="dn-score" id="dinoScore">00000</span>
+          <span class="dn-high" id="dinoHigh">最高 00000</span>
+        </div>
+        <canvas id="dinoCanvas" width="900" height="300" tabindex="0"></canvas>
+        <div class="dn-hint" id="dinoHint">按 空格 / ↑ / W 开始</div>
+        <div class="dn-foot">
+          <span>空格 / ↑ 跳跃</span><span>↓ / S 蹲下</span>
+          <span>Esc 关闭</span>
+          <button class="btn tiny" id="btnDinoBack">返回文件夹</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 结算 ===================== -->
+<div id="ending" class="screen hidden">
+  <div class="box">
+    <h2 id="endTitle">比 赛 结 束</h2>
+    <p id="endSub">评测机已停止运行，你的代码已被封存。</p>
+    <div class="big" id="endScore">0</div>
+    <div class="stat-grid" id="endStats"></div>
+    <div id="endDetail"></div>
+    <div id="endAch" class="ach-list"></div>
+    <button class="btn primary" id="btnRestart"
+            style="margin-top:24px;padding:11px 40px">再来一场</button>
+  </div>
+</div>
+
+<!-- =========================================================================
+     ★ three.js 必须用这个【静态阻塞式】标签加载，放在所有逻辑脚本之前。
+
+     为什么不能改成"动态插入 script 异步加载"：core.js / world.js / player.js …
+     在模块顶层就写了 new THREE.Raycaster() 这类代码。异步加载时解析器不会等它，
+     那些脚本会先执行并全部抛 ReferenceError: THREE is not defined，
+     连带让模块级 let 全部未初始化，最后报出一个指向完全无关位置的二次错误。
+     静态标签没有等待、没有时序不确定性 —— 解析到 boot.js 时 THREE 一定已在全局。
+     （详尽的踩坑记录写在 js/boot.js 头部，改这里之前先读那段。）
+
+     默认只加载本地文件：零网络依赖、离线可用、速度最快。
+     如果 vendor/three.min.js 丢失，把下面的 src 换成后面注释里的任意一个：
+       https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js
+       https://unpkg.com/three@0.128.0/build/three.min.js
+       https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js
+     ========================================================================= -->
+<script src="vendor/three.min.js" onerror="window.__THREE_SRC__='FAILED'"></script>
+
+<!-- 缓存破除串：改了脚本内容后把 v 加一，可以省掉"改了代码浏览器还跑旧文件"
+     这类最浪费时间的误会。tools/serve.mjs 自身也发 no-store，双保险。 -->
+
+<!-- 静态数据 -->
+<script src="assets/keywords.js?v=3"></script>
+<script src="assets/problems/_pool.js?v=3"></script>
+<script src="assets/problems/P90001.js?v=3"></script>
+<script src="assets/problems/P90002.js?v=3"></script>
+<script src="assets/problems/P90003.js?v=3"></script>
+<script src="assets/problems/P90004.js?v=3"></script>
+<script src="assets/problems/P90005.js?v=3"></script>
+<script src="assets/problems/P90006.js?v=3"></script>
+<!-- 第二批：难度 1/2/3/3/4/5 各一道，覆盖模拟 / 差分+BFS / 计数 DP / 区间第 k 小。
+     每局仍只抽 4 道，题池变大只影响"这一局抽到哪四道"。 -->
+<script src="assets/problems/P90007.js?v=3"></script>
+<script src="assets/problems/P90008.js?v=3"></script>
+<script src="assets/problems/P90009.js?v=3"></script>
+<script src="assets/problems/P90010.js?v=3"></script>
+<script src="assets/problems/P90011.js?v=3"></script>
+<script src="assets/problems/P90012.js?v=3"></script>
+
+<!-- 校园静态数据（楼名 / 考场号 / 教室号 / 指引文案）放在 core 之前：
+     core.js 的 src 里没有引用它们，但 campusdata 自身在加载期就要用
+     const 声明这些常量，越早确定越好。 -->
+<script src="js/campusdata.js?v=3"></script>
+
+<!-- 逻辑模块（传统脚本，共享全局作用域；顺序即依赖顺序）
+     boot.js 必须排在 core.js 之前：它同步把 THREE 装进全局，
+     之后所有脚本在最顶层使用 THREE 才是安全的。 -->
+<script src="js/core.js?v=3"></script>
+<script src="assets/problems/problems.js?v=3"></script>
+<script src="js/judge.js?v=3"></script>
+<script src="js/npcgen.js?v=3"></script>
+<!-- rivals.js 紧跟 npcgen.js：它读的是同一批选手名字，也只是延后调用的纯函数 -->
+<script src="js/rivals.js?v=3"></script>
+<script src="js/boot.js?v=3"></script>
+<!-- campus.js 必须在 interact.js 之前：updateInteract() 会调用 campusInteract()，
+     campus.js 里还要读 CAMPUS_* 常量与 CP 偏移量。 -->
+<script src="js/campus.js?v=3"></script>
+<script src="js/world.js?v=3"></script>
+<!-- building.js 必须在 world.js 之后（用它的 buildDesk/buildPerson/ROOM_H/DOOR_W），
+     在 player.js 之前（drawMinimap 读它的 foreignNpcs） -->
+<script src="js/building.js?v=3"></script>
+<script src="js/player.js?v=3"></script>
+<script src="js/dialog3d.js?v=3"></script>
+<script src="js/reticle.js?v=3"></script>
+<script src="js/postfx.js?v=3"></script>
+<script src="js/feedback.js?v=3"></script>
+<script src="js/items.js?v=3"></script>
+<script src="js/pickups.js?v=3"></script>
+<script src="js/hp.js?v=3"></script>
+<script src="js/ide.js?v=3"></script>
+<script src="js/launcher.js?v=3"></script>
+<script src="js/paper.js?v=3"></script>
+<script src="js/phone.js?v=3"></script>
+<script src="js/interact.js?v=3"></script>
+<script src="js/debris.js?v=3"></script>
+<script src="js/combat.js?v=3"></script>
+<script src="js/npc.js?v=3"></script>
+<script src="js/teacher.js?v=3"></script>
+<script src="js/guards.js?v=3"></script>
+<script src="js/corridor.js?v=3"></script>
+<script src="js/save.js?v=3"></script>
+<script src="js/tension.js?v=3"></script>
+<script src="js/ending.js?v=3"></script>
+<script src="js/main.js?v=3"></script>
+</body>
+</html>

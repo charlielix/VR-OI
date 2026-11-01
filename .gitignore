@@ -1,0 +1,19 @@
+# 本地自签证书（tools/gencert.mjs 生成，每台机器各不相同，不入库）
+certs/
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+*.log
+
+# 测试工具的临时产物
+node_modules/
+tools/out/
+.screenshots/
+*.tmp
+
+# Trae 分享/打包产物（本地生成的 zip，不是源码）
+.trae-html-share-packages/
+
+# 旧版本参考目录（迁移已完成，属于另一份独立工程，不随当前项目入库）
+vr-oi-room 2/
