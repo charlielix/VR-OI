@@ -1,0 +1,18 @@
+1.0 : 
+https://github.com/Deng2010/vr-oi-simulator
+MIT
+https://www.luogu.com.cn/article/kpzj74rt
+https://www.luogu.com.cn/problem/U736009
+
+
+2.0 : 
+https://github.com/aakaakii/vr-oi-simulator
+MIT
+https://www.luogu.com.cn/article/iogi09n2
+
+
+3.* : 
+https://github.com/52077-code/vr-oi-room/
+?
+https://www.luogu.com.cn/article/6zznm1xh
+https://www.luogu.com.cn/problem/U744491
