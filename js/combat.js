@@ -60,8 +60,8 @@ function pushGuard(g, dist){
   const d = Math.hypot(dx, dz) || 1;
   let moved = false;
   const nx = p.x + (dx / d) * dist, nz = p.z + (dz / d) * dist;
-  if (!collides(nx, p.z, 0.3)){ p.x = nx; moved = true; }
-  if (!collides(p.x, nz, 0.3)){ p.z = nz; moved = true; }
+  if (!guardCollides(nx, p.z, 0.3)){ p.x = nx; moved = true; }
+  if (!guardCollides(p.x, nz, 0.3)){ p.z = nz; moved = true; }
   /* 踉跄：复用干呕那个"站着不动"的判定（guards.js 里 stunned 现在也认它） */
   g.userData.staggerUntil = state.worldTime + 0.45;
   return moved;

@@ -41,7 +41,14 @@ function deepenContactShadows(t){ /* no-op：阴影已移除 */ }
      buildRoom()              只建几何，一辈子只跑一次
      registerRoomObstacles()  只登记碰撞，每次切进房间都要重放
    这样切换区域时不需要重建任何几何，也不会出现"几何改造了、碰撞忘了改"。 */
+/* 房间的静态碰撞体快照（墙 / 桌 / 饮水机，不含门）。
+   保安在房间 ↔ 走廊之间追人时，需要「房间 + 走廊」的并集碰撞
+   （见 building.js 的 guardCollides）—— 而全局 obstacles 只装玩家当前区域的墙。
+   所以这里单独留一份房间的，供并集使用。 */
+const roomObstacles = [];
+
 function registerRoomObstacles(){
+  obstacles.length = 0;          /* 自己清：下面的快照只取房间静态部分 */
   const W = ROOM_W, D = ROOM_D;
   /* 四面墙：+X 墙留门洞，让人能走出 404 进楼走廊（见 building.js） */
   addObstacle(-W / 2 - 0.5, 0, 0.5, D / 2 + 1);
@@ -59,8 +66,12 @@ function registerRoomObstacles(){
   for (const s of NPC_SEATS) registerDeskObstacle(s.x, s.z);
   /* 饮水机 */
   addObstacle(-6.6, 5.6, 0.25, 0.25);
+  /* 快照（不含门）：门是动态的，由 rebuildGuardObstacles 按开关状态补 */
+  roomObstacles.length = 0;
+  for (const o of obstacles) roomObstacles.push(o);
   /* 教室门（404 东墙）：关门时把它的碰撞体补上（见 building.js） */
   registerDoorBlockers('room');
+  rebuildGuardObstacles();
 }
 
 function buildRoom(){

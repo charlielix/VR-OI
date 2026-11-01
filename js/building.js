@@ -140,6 +140,48 @@ function doorInteractPrompt(){
   return false;
 }
 
+/* ============================ 保安碰撞（并集） ============================
+   保安会从房间追进走廊、也会从电梯间/门口追进房间 —— 一具身体横跨两个区域。
+   而全局 obstacles 只装「玩家当前区域」的墙，保安如果只用它，
+   站在走廊里的保安就会穿过房间的课桌/墙（反之亦然）。
+   guardObs 是 房间静态 + 1F 走廊静态 + 当前关着的门 的并集，专供保安使用。
+   （2F 在 +Z 远处，保安不会上楼，不并进来。） */
+const guardObs = [];
+function rebuildGuardObstacles(){
+  guardObs.length = 0;
+  for (const o of roomObstacles) guardObs.push(o);
+  for (const o of hallObstacles1f) guardObs.push(o);
+  for (const d of classroomDoors){
+    if (d.state !== 'closed') continue;
+    for (const b of d.blockers) guardObs.push(b);
+  }
+}
+function guardCollides(x, z, r){
+  /* 先查玩家当前区域的 obstacles（含动态门格），再查房间+走廊的并集。
+     两者有重叠，但这样保安"玩家能撞的 + 房间/走廊能撞的"全都会撞 —— 超集最安全。 */
+  for (let i = 0; i < obstacles.length; i++){
+    const o = obstacles[i];
+    if (Math.abs(x - o.x) < o.hw + r && Math.abs(z - o.z) < o.hd + r) return true;
+  }
+  for (let i = 0; i < guardObs.length; i++){
+    const o = guardObs[i];
+    if (Math.abs(x - o.x) < o.hw + r && Math.abs(z - o.z) < o.hd + r) return true;
+  }
+  return false;
+}
+
+/* 保安开门：贴近一扇关着的教室门就把它推开（开门后照常 10 秒自动关）。
+   这样保安不会卡在关着的门前 —— 也保证它们只从门过、不从墙上过。 */
+const GUARD_OPEN_DOOR_RANGE = 1.8;
+function tryGuardOpenDoor(x, z){
+  for (const d of classroomDoors){
+    if (d.state !== 'closed') continue;
+    if (d.name === '404' && state.doorOpen) continue;   /* 终局门常开 */
+    if (Math.hypot(x - d.group.position.x, z - d.group.position.z) < GUARD_OPEN_DOOR_RANGE)
+      openClassroomDoor(d);
+  }
+}
+
 /* ---- 墙：给定一段 [a,b] 和若干门洞 [g0,g1]，返回实心段的列表 ---- */
 function solidSegs(a, b, gaps){
   const sorted = (gaps || []).slice().sort((p, q) => p[0] - q[0]);
@@ -328,6 +370,7 @@ function registerHallObstacles(floor){
   const list = (floor === 2) ? hallObstacles2f : hallObstacles1f;
   for (const o of list) obstacles.push(o);
   registerDoorBlockers(floor === 2 ? 'hall2' : 'hall1');
+  rebuildGuardObstacles();
 }
 
 /* ---- 安检后瞬移进电梯间（1F 南端，楼梯间再往南） ---- */
@@ -448,7 +491,19 @@ function tryUseBathroom(){
 function hallInteract(){
   const zOff = currentFloorZ();
 
-  /* 0. 教室门（开门/关门）—— 优先级最高，别被"干扰同学"抢走 */
+  /* 0. 终局：门已开白光，站在走廊（门外）这边也能走进去结算。
+     （拆掉 200 个保安时人可能在走廊里，不能逼他先挤回房间。） */
+  if (state.doorOpen){
+    const dIm = Math.hypot(state.pos.x - BD_X0, state.pos.z);
+    if (dIm < 2.4){
+      actionE = { fn: walkOutOfTheRoom };
+      setPrompt('[ E ] 走进白光');
+      promptEl.classList.remove('hidden');
+      return;
+    }
+  }
+
+  /* 0b. 教室门（开门/关门）—— 别被"干扰同学"抢走 */
   if (doorInteractPrompt()) return;
 
   /* 1. 干扰外班同学 */

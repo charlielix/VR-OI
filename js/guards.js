@@ -160,12 +160,12 @@ function guardFreeSpot(startAngle, extra, gapWanted){
 const UNSTICK_RINGS = [0.4, 0.8, 1.3, 1.9, 2.6];
 function unstickGuard(g, dt){
   const p = g.group.position;
-  if (!collides(p.x, p.z, 0.3)){ g.userData.stuckT = 0; return false; }
+  if (!guardCollides(p.x, p.z, 0.3)){ g.userData.stuckT = 0; return false; }
   for (const r of UNSTICK_RINGS){
     for (let k = 0; k < 16; k++){
       const a = (k / 16) * TAU;
       const nx = p.x + Math.cos(a) * r, nz = p.z + Math.sin(a) * r;
-      if (!collides(nx, nz, 0.3)){ p.x = nx; p.z = nz; g.userData.stuckT = 0; return true; }
+      if (!guardCollides(nx, nz, 0.3)){ p.x = nx; p.z = nz; g.userData.stuckT = 0; return true; }
     }
   }
   g.userData.stuckT = (g.userData.stuckT || 0) + dt;
@@ -270,8 +270,11 @@ function updateGuards(realDt, t){
       const sp = g.userData.speed * realDt;
       const nx = pos.x + (dx / d) * sp;
       const nz = pos.z + (dz / d) * sp;
-      if (!collides(nx, pos.z, 0.3)) pos.x = nx;
-      if (!collides(pos.x, nz, 0.3)) pos.z = nz;
+      /* guardCollides = 房间 + 走廊 + 关着的门 的并集：保安不穿墙、不穿门 */
+      if (!guardCollides(nx, pos.z, 0.3)) pos.x = nx;
+      if (!guardCollides(pos.x, nz, 0.3)) pos.z = nz;
+      /* 贴到关着的门就推开（保安会开门），10 秒后自动关 */
+      tryGuardOpenDoor(pos.x, pos.z);
       g.group.rotation.y = Math.atan2(dx, dz);
     }
 

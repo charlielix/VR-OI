@@ -1325,8 +1325,10 @@ check('击退：没被打倒的会被推开 + 踉跄，武器比空手推得远'
     state.pos.x = 0; state.pos.z = 0; state.yaw = 0;
     state.worldTime = 100;
 
-    /* 一个站在 2m 外的保安：推一下应当离得更远，并带上踉跄 */
-    const g = { userData: { alive: true }, group: { position: { x: 0, z: -2 } } };
+    /* 一个站在 2m 外的保安：推一下应当离得更远，并带上踉跄。
+       起点放在 +X 方向的开阔处（(0,-2) 背后正好是玩家课桌，推过去会被桌角挡住 ——
+       那其实是"保安不该被推进桌子里"的正确行为，不该拿它当击退测试）。 */
+    const g = { userData: { alive: true }, group: { position: { x: 2, z: 0 } } };
     const before = Math.hypot(g.group.position.x, g.group.position.z);
     const moved = pushGuard(g, 1.6);
     const after = Math.hypot(g.group.position.x, g.group.position.z);
@@ -2846,6 +2848,71 @@ check('走廊里能打保安（保安会追出门）', () => {
   if (!r.hasSpace) throw new Error('走廊里保安在拳锋内，actionSpace 却是 null（左键无反应）');
   if (!/出拳|抡/.test(r.prompt)) throw new Error('提示不对：' + r.prompt);
   return 'hall1 · actionSpace = 出拳 · ' + r.prompt;
+});
+check('保安不穿门：关着的门挡住保安，走近会自己开门', () => {
+  const r = vm.runInContext(`
+    (() => {
+      const saved = { area: state.area, px: state.pos.x, pz: state.pos.z };
+      const savedG = securityGuards.slice(), savedS = state.guardsSpawned;
+      let door = null, tempGuard = null;
+      const out = {};
+      try {
+        securityGuards.length = 0; state.guardsSpawned = 0;
+        switchArea('hall1');
+        door = classroomDoors.find(d => d.name === '404');
+        if (!door) return { err: '找不到 404 门' };
+        setDoorOpen(door, false);                 /* 先确保门是关着的 */
+        out.blockedWhenClosed = guardCollides(7.9, 0, 0.3);   /* 门口（走廊西墙 x=8） */
+        tempGuard = buildSecurityGuard(10.5, 0);
+        tempGuard.userData = { speed: 1, alive: true, blink: 0 };
+        securityGuards.push(tempGuard);
+        tryGuardOpenDoor(9.0, 0);                 /* 保安贴近门 → 自己开 */
+        out.stateAfter = door.state;
+        out.blockedAfterOpen = guardCollides(7.9, 0, 0.3);
+      } finally {
+        if (door) setDoorOpen(door, false);
+        if (tempGuard) scene.remove(tempGuard.group);
+        securityGuards.length = 0;
+        savedG.forEach(g => securityGuards.push(g));
+        state.guardsSpawned = savedS;
+        switchArea(saved.area);
+        state.pos.x = saved.px; state.pos.z = saved.pz;
+      }
+      return out;
+    })()
+  `, sandbox);
+  if (r.err) throw new Error(r.err);
+  if (!r.blockedWhenClosed)
+    throw new Error('门关着时，门口（x=7.9）居然不挡保安 —— 保安会穿门');
+  if (r.stateAfter !== 'open') throw new Error('保安贴近关着的门却没开门：' + r.stateAfter);
+  if (r.blockedAfterOpen) throw new Error('门开了门口还挡着 —— 关门碰撞没撤掉');
+  return '关门挡 · 走近开门 · 开门放行';
+});
+check('终局在门外也能完成：走廊里按 E 走进白光', () => {
+  const r = vm.runInContext(`
+    (() => {
+      state.started = true; state.ended = false; state.frozen = false; state.view = 'world';
+      dismissDialogs();
+      switchArea('hall1');
+      state.doorOpen = true;
+      doorOpenT = 0;                            /* 让 aimingAtWhiteLight 直接短路，不射线 */
+      state.pos.set(8.6, 1.65, 0);              /* 门外：走廊西侧、正对门 */
+      updateInteract();
+      const near = { hasE: !!actionE, fn: actionE && actionE.fn.name,
+                     prompt: String(promptEl.textContent || '') };
+      state.pos.set(10.5, 1.65, 5);              /* 走廊里但离门远 */
+      updateInteract();
+      const far = { hasE: !!actionE };
+      state.doorOpen = false; doorOpenT = 0;
+      switchArea('room');
+      return { near: near, far: far };
+    })()
+  `, sandbox);
+  if (!r.near.hasE || r.near.fn !== 'walkOutOfTheRoom')
+    throw new Error('门外（x=8.6）没有"走进白光"的通关动作：' + JSON.stringify(r.near));
+  if (!/白光/.test(r.near.prompt)) throw new Error('门外提示不对：' + r.near.prompt);
+  if (r.far.hasE) throw new Error('离门很远却触发了通关动作');
+  return '门外 = 走进白光 · 远处不触发';
 });
 check('交互提示会刷新', () => {
   vm.runInContext('updateInteract()', sandbox);
